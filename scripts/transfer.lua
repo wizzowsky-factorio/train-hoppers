@@ -1,0 +1,4 @@
+-- Transfer logic.
+-- Hooks on_train_changed_state; when a train enters wait_station, iterate its
+-- cargo wagons, find any hopper whose detection area overlaps a wagon, and
+-- move items between hopper and wagon inventories in a single atomic transfer.

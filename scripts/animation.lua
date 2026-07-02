@@ -1,0 +1,3 @@
+-- Visual pulse animation for transfers.
+-- Drives the elevator/chute animation state machine on nth-tick. Purely visual;
+-- inventory changes happen atomically in transfer.lua.

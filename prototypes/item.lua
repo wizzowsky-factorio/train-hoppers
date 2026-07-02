@@ -1,0 +1,1 @@
+-- Item prototypes for placing the loader and unloader hoppers.

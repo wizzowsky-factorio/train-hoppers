@@ -1,0 +1,4 @@
+-- Placement validation.
+-- On build events, verify the hopper sits over a straight rail of the correct
+-- orientation. If not, cancel placement and return the item to the player.
+-- On mine/destroy events, unregister the hopper from storage.

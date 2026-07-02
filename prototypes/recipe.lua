@@ -1,0 +1,1 @@
+-- Crafting recipes for the loader and unloader hoppers.

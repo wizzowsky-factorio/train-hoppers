@@ -1,0 +1,9 @@
+{
+  "name": "train-hoppers",
+  "version": "0.1.0",
+  "title": "Train Hoppers",
+  "author": "Wizzowsky",
+  "factorio_version": "2.1",
+  "dependencies": ["base >= 2.1"],
+  "description": "Two large buildings that straddle a rail and rapidly load or unload cargo wagons when a train stops."
+}

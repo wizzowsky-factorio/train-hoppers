@@ -1,0 +1,4 @@
+-- Loading Hopper prototype.
+-- ContainerPrototype straddling a ground rail with a 4x6 footprint.
+-- Center 2x6 sits over the rail; 1x6 side strips are inserter-accessible.
+-- Collision mask must exclude the rail layer so it can be placed over rails.

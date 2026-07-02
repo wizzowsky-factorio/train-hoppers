@@ -1,0 +1,4 @@
+-- Unloading Hopper prototype.
+-- Same 4x6 shape as the loader. Visual identity is the "pit and elevators"
+-- illusion: recessed sprite under the rail, animated shafts bringing items up
+-- to the side strips where inserters can grab them.

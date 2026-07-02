@@ -1,0 +1,2 @@
+-- on_configuration_changed handler.
+-- Reconciles storage against actual world entities after mod add/remove/update.
