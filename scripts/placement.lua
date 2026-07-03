@@ -36,19 +36,22 @@ for _, event_id in ipairs(build_events) do
     if not (placer and placer.valid) then return end
     if placer.name ~= "train-hopper-loader" then return end
 
-    local surface  = placer.surface
-    local position = placer.position
-    local force    = placer.force
+    local surface   = placer.surface
+    local position  = placer.position
+    local force     = placer.force
     local direction = placer.direction
 
     local target_name = variant_for_direction(direction)
     placer.destroy()
 
-    surface.create_entity{
+    local new_entity = surface.create_entity{
       name     = target_name,
       position = position,
       force    = force,
     }
+    if new_entity then
+      storage.loaders[new_entity.unit_number] = { entity = new_entity }
+    end
   end)
 end
 
@@ -70,6 +73,24 @@ script.on_event(defines.events.on_player_rotated_entity, function(event)
   }
   if new_entity then
     transfer_inventory(rotated_entity, new_entity)
+    storage.loaders[rotated_entity.unit_number] = nil
+    storage.loaders[new_entity.unit_number] = { entity = new_entity }
     rotated_entity.destroy()
   end
 end)
+
+local destroy_events = {
+  defines.events.on_player_mined_entity,
+  defines.events.on_robot_mined_entity,
+  defines.events.on_entity_died,
+  defines.events.script_raised_destroy,
+}
+for _, event_id in ipairs(destroy_events) do
+  script.on_event(event_id, function(event)
+    local entity = event.entity
+    if not (entity and entity.valid) then return end
+    if entity.name == "train-hopper-loader-h" or entity.name == "train-hopper-loader-v" then
+      storage.loaders[entity.unit_number] = nil
+    end
+  end)
+end

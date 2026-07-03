@@ -9,7 +9,7 @@ local graphics = require("prototypes.graphics")
 local function make_hopper_container(name, collision_box)
   local hopper_variant = table.deepcopy(data.raw["container"]["steel-chest"])
   hopper_variant.name = name
-  hopper_variant.minable = { mining_time = 0.5, result = "train-hopper-loader" }  -- returns the item
+  hopper_variant.minable = { mining_time = 0.5, result = "train-hopper-loader" }              -- returns the item
   hopper_variant.max_health = 500
   hopper_variant.inventory_size = 100
   hopper_variant.collision_box = collision_box
@@ -19,8 +19,8 @@ local function make_hopper_container(name, collision_box)
   hopper_variant.fast_replaceable_group = "train-hopper"
   -- Hide the H and V variants from the crafting menu; only the placer is user-facing.
   hopper_variant.flags = { "placeable-neutral", "player-creation", "not-in-kill-statistics" }
-  hopper_variant.hidden = true   -- keeps them out of Factoriopedia
-  hopper_variant.placeable_by = { item = "train-hopper-loader", count = 1 } -- enable Q selection
+  hopper_variant.hidden = true                                                                -- keeps them out of Factoriopedia
+  hopper_variant.placeable_by = { item = "train-hopper-loader", count = 1 }                   -- enable Q selection
   hopper_variant.localised_name = { "entity-name.train-hopper-loader" }
   return hopper_variant
 end
@@ -40,7 +40,7 @@ loader_v.picture = graphics.build_chest_border_picture(graphics.v_positions)
 -- The placer: a rotatable proxy the player actually picks up.
 -- Assembling-machine gives us R-key rotation of the ghost preview.
 local loader_placer = table.deepcopy(data.raw["assembling-machine"]["assembling-machine-1"])
-loader_placer.name = "train-hopper-loader"    -- same name as the item; player-facing
+loader_placer.name = "train-hopper-loader"                                                    -- same name as the item; player-facing
 loader_placer.minable = { mining_time = 0.5, result = "train-hopper-loader" }
 loader_placer.max_health = 500
 loader_placer.next_upgrade = nil
