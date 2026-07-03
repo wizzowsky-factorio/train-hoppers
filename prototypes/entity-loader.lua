@@ -3,6 +3,8 @@
 -- Center 2x6 sits over the rail; 1x6 side strips are inserter-accessible.
 -- Collision mask must exclude the rail layer so it can be placed over rails.
 
+local graphics = require("prototypes.graphics")
+
 -- Shared setup for both container variants.
 local function make_hopper_container(name, collision_box)
   local hopper_variant = table.deepcopy(data.raw["container"]["steel-chest"])
@@ -27,11 +29,13 @@ local loader_h = make_hopper_container(
   "train-hopper-loader-h",
   {{-2.9, -1.9}, {2.9, 1.9}}   -- 6 wide, 4 tall
 )
+loader_h.picture = graphics.build_chest_border_picture(graphics.h_positions)
 
 local loader_v = make_hopper_container(
   "train-hopper-loader-v",
   {{-1.9, -2.9}, {1.9, 2.9}}   -- 4 wide, 6 tall
 )
+loader_v.picture = graphics.build_chest_border_picture(graphics.v_positions)
 
 -- The placer: a rotatable proxy the player actually picks up.
 -- Assembling-machine gives us R-key rotation of the ghost preview.
@@ -52,5 +56,6 @@ loader_placer.fluid_boxes = nil
 loader_placer.collision_box = {{-2.9, -1.9}, {2.9, 1.9}}
 loader_placer.selection_box = {{-2.9, -1.9}, {2.9, 1.9}}
 loader_placer.collision_mask = { layers = { player = true, is_object = true } }
+loader_placer.graphics_set = { animation = graphics.build_directional_border_animation() }
 
 data:extend({ loader_h, loader_v, loader_placer })
