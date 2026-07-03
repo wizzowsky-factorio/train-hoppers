@@ -21,6 +21,7 @@ local function transfer_hopper_to_wagon(hopper, wagon)
   end
 end
 
+-- Immediate transfer when a train arrives at a station.
 script.on_event(defines.events.on_train_changed_state, function(event)
   local train = event.train
   if train.state ~= defines.train_state.wait_station then return end
@@ -32,6 +33,24 @@ script.on_event(defines.events.on_train_changed_state, function(event)
     }
     for _, hopper in ipairs(overlapping_hoppers) do
       transfer_hopper_to_wagon(hopper, wagon)
+    end
+  end
+end)
+
+ -- Continuous transfer while trains sit at stations.
+script.on_nth_tick(15, function()
+  for _, record in pairs(storage.loaders) do
+    local hopper = record.entity
+    if hopper.valid then
+      local wagons = hopper.surface.find_entities_filtered{
+        type = "cargo-wagon",
+        area = hopper.bounding_box,
+      }
+      for _, wagon in ipairs(wagons) do
+        if wagon.valid and wagon.train and wagon.train.state == defines.train_state.wait_station then
+          transfer_hopper_to_wagon(hopper, wagon)
+        end
+      end
     end
   end
 end)
