@@ -18,6 +18,8 @@ local function make_hopper_container(name, collision_box)
   -- Hide the H and V variants from the crafting menu; only the placer is user-facing.
   hopper_variant.flags = { "placeable-neutral", "player-creation", "not-in-kill-statistics" }
   hopper_variant.hidden = true   -- keeps them out of Factoriopedia
+  hopper_variant.placeable_by = { item = "train-hopper-loader", count = 1 } -- enable Q selection
+  hopper_variant.localised_name = { "entity-name.train-hopper-loader" }
   return hopper_variant
 end
 
