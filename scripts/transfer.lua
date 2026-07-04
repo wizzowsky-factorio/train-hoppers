@@ -30,7 +30,12 @@ script.on_event(defines.events.on_train_changed_state, function(event)
     registry.register_train_hoppers(train)
     for _, wagon in pairs(train.cargo_wagons) do
       for _, hopper in ipairs(registry.find_hoppers_overlapping_wagon(wagon)) do
-        transfer_hopper_to_wagon(hopper, wagon)
+        local reg = storage.hoppers.by_unit[hopper.unit_number]
+        if reg and reg.kind == "loader" then
+          transfer_hopper_to_wagon(hopper, wagon)
+        elseif reg and reg.kind == "unloader" then
+          -- transfer_wagon_to_hopper(hopper, wagon)
+        end
       end
     end
   elseif event.old_state == defines.train_state.wait_station then
@@ -41,15 +46,18 @@ end)
  -- Continuous transfer while trains sit at stations.
 script.on_nth_tick(15, function()
   if not (storage.hoppers and storage.hoppers.active) then return end
-  for hopper_unit_number, record in pairs(storage.hoppers.active) do
-    if not record.hopper.valid then
-      storage.hoppers.active[hopper_unit_number] = nil
-    else
+  for unit_number, record in pairs(storage.hoppers.active) do
+    local reg = storage.hoppers.by_unit[unit_number]
+    if reg and reg.entity.valid then
       for _, wagon in ipairs(record.wagons) do
-        if wagon.valid then
-          transfer_hopper_to_wagon(record.hopper, wagon)
+        if reg.kind == "loader" then
+          transfer_hopper_to_wagon(reg.entity, wagon)
+        elseif reg.kind == "unloader" then
+          -- transfer_wagon_to_hopper(reg.entity, wagon)
         end
       end
+    else
+      storage.hoppers.active[unit_number] = nil
     end
   end
 end)

@@ -50,7 +50,7 @@ for _, event_id in ipairs(build_events) do
       force    = force,
     }
     if new_entity then
-      storage.hoppers.loaders[new_entity.unit_number] = { entity = new_entity }
+      storage.hoppers.by_unit[new_entity.unit_number] = { entity = new_entity, kind = "loader" }
     end
   end)
 end
@@ -72,10 +72,11 @@ script.on_event(defines.events.on_player_rotated_entity, function(event)
     force    = force,
   }
   if new_entity then
+    local kind = storage.hoppers.by_unit[rotated_entity.unit_number].kind
     transfer_inventory(rotated_entity, new_entity)
-    storage.hoppers.loaders[rotated_entity.unit_number] = nil
+    storage.hoppers.by_unit[rotated_entity.unit_number] = nil
     storage.hoppers.active[rotated_entity.unit_number] = nil
-    storage.hoppers.loaders[new_entity.unit_number] = { entity = new_entity }
+    storage.hoppers.by_unit[new_entity.unit_number] = { entity = new_entity, kind = kind }
     rotated_entity.destroy()
   end
 end)
@@ -90,8 +91,8 @@ for _, event_id in ipairs(destroy_events) do
   script.on_event(event_id, function(event)
     local entity = event.entity
     if not (entity and entity.valid) then return end
-    if entity.name == "train-hopper-loader-h" or entity.name == "train-hopper-loader-v" then
-      storage.hoppers.loaders[entity.unit_number] = nil
+    if storage.hoppers.by_unit[entity.unit_number] then
+      storage.hoppers.by_unit[entity.unit_number] = nil
       storage.hoppers.active[entity.unit_number] = nil
     end
   end)

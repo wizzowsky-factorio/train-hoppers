@@ -1,10 +1,14 @@
 local M = {}
 
-local HOPPER_NAMES = { "train-hopper-loader-h", "train-hopper-loader-v" }
+M.LOADER_NAMES = { "train-hopper-loader-h",   "train-hopper-loader-v" }
+M.UNLOADER_NAMES = { "train-hopper-unloader-h", "train-hopper-unloader-v" }
+M.ALL_HOPPER_NAMES = {}
+for _, name in ipairs(M.LOADER_NAMES) do table.insert(M.ALL_HOPPER_NAMES, name) end
+for _, name in ipairs(M.UNLOADER_NAMES) do table.insert(M.ALL_HOPPER_NAMES, name) end
 
 function M.find_hoppers_overlapping_wagon(wagon)
   return wagon.surface.find_entities_filtered{
-    name = HOPPER_NAMES,
+    name = M.ALL_HOPPER_NAMES,
     area = wagon.bounding_box,
   }
 end
@@ -16,7 +20,7 @@ function M.register_train_hoppers(train)
     for _, hopper in ipairs(M.find_hoppers_overlapping_wagon(wagon)) do
       local record = storage.hoppers.active[hopper.unit_number]
       if not record then
-        record = { hopper = hopper, wagons = {} }
+        record = { wagons = {} }
         storage.hoppers.active[hopper.unit_number] = record
       end
       table.insert(record.wagons, wagon)
