@@ -15,6 +15,9 @@ local function make_hopper_container(name, collision_box)
   hopper_variant.collision_box = collision_box
   hopper_variant.selection_box = collision_box
   hopper_variant.collision_mask = { layers = { player = true, is_object = true } }
+  -- Below the default (50) so a cargo wagon parked over the center wins hover
+  -- selection; the wider side strips still select the hopper (see graphics.lua).
+  hopper_variant.selection_priority = 25
   hopper_variant.next_upgrade = nil
   hopper_variant.fast_replaceable_group = "train-hopper"
   -- Hide the H and V variants from the crafting menu; only the placer is user-facing.

@@ -17,6 +17,9 @@ local function chest_at(dx, dy, tint)
     if tint then
       shifted.tint = tint
     end
+    -- Draw beneath rolling stock so a parked wagon sits visually on top of the
+    -- hopper (shadow layers keep their own layer regardless of this).
+    shifted.render_layer = "lower-object"
     table.insert(copied_layers, shifted)
   end
   return copied_layers
