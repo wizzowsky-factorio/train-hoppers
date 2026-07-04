@@ -20,3 +20,16 @@ Early development. See `spec.md` for the full design specification, milestones, 
 - **Factorio version:** 2.1+
 - **Required:** `base >= 2.1`
 - **Space Age:** not required. Elevated rails and quality wagons are handled correctly if present but not required.
+
+## License
+
+Copyright (C) 2026 Wizzowsky.
+
+This mod's source code is licensed under the **GNU General Public License v3.0 or
+later** (GPL-3.0-or-later). You are free to use, study, share, and modify it, but
+any distributed derivative work must also be licensed under the GPL and keep its
+source available. See the [`LICENSE`](LICENSE) file for the full text.
+
+The mod's placeholder graphics are composited at runtime from Factorio's vanilla
+sprites (e.g. the steel chest). Those base-game assets remain the property of
+Wube Software and are **not** covered by this license.
