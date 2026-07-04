@@ -23,6 +23,57 @@ local function variant_for_direction(direction, cfg)
   end
 end
 
+-- Rail types a hopper's outer strips must stay clear of.
+local RAIL_TYPES = { "straight-rail", "half-diagonal-rail", "curved-rail-a", "curved-rail-b" }
+
+-- The two 1-tile outer strips of the footprint, inset slightly on the inner
+-- edge so a correctly-centered rail (which sits in the middle 2 tiles) doesn't
+-- clip the strip boundary. Rails live on a 2-tile grid, so a parallel or
+-- off-by-one rail lands squarely inside a strip while a centered one stays out.
+local function outer_strip_areas(position, is_horizontal)
+  local x, y = position.x, position.y
+  if is_horizontal then
+    return {
+      { {x - 3, y - 2},   {x + 3, y - 1.2} },  -- top strip
+      { {x - 3, y + 1.2}, {x + 3, y + 2}   },  -- bottom strip
+    }
+  else
+    return {
+      { {x - 2,   y - 3}, {x - 1.2, y + 3} },  -- left strip
+      { {x + 1.2, y - 3}, {x + 2,   y + 3} },  -- right strip
+    }
+  end
+end
+
+-- True if neither outer strip overlaps a rail, i.e. the hopper straddles a
+-- single track cleanly rather than spanning or sitting off-center.
+local function strips_clear_of_rails(surface, position, is_horizontal)
+  for _, area in ipairs(outer_strip_areas(position, is_horizontal)) do
+    if surface.count_entities_filtered{ area = area, type = RAIL_TYPES } > 0 then
+      return false
+    end
+  end
+  return true
+end
+
+-- Reject a misplaced placer, returning the item to its source.
+local function refund_and_cancel(event, placer)
+  local surface, position, item_name = placer.surface, placer.position, placer.name
+
+  if event.player_index then
+    local player = game.get_player(event.player_index)
+    if player then
+      player.create_local_flying_text{ text = { "train-hopper.bad-placement" }, position = position }
+      player.mine_entity(placer, true)   -- returns the item, spills overflow, removes placer
+      return
+    end
+  end
+
+  -- Robots / script-raised builds: no player to mine it back, so spill and destroy.
+  surface.spill_item_stack{ position = position, stack = { name = item_name, count = 1 } }
+  placer.destroy()
+end
+
 -- Copy inventory contents from one entity to another. Both must have the same
 -- inventory type (defines.inventory.chest here since they're containers).
 local function transfer_inventory(from_entity, to_entity)
@@ -57,6 +108,13 @@ for _, event_id in ipairs(build_events) do
     local direction = placer.direction
 
     local target_name = variant_for_direction(direction, cfg)
+
+    local is_horizontal = (target_name == cfg.h)
+    if not strips_clear_of_rails(surface, position, is_horizontal) then
+      refund_and_cancel(event, placer)
+      return
+    end
+
     placer.destroy()
 
     local new_entity = surface.create_entity{
