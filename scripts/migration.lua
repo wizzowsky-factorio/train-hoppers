@@ -38,12 +38,8 @@ end
 
 local function reregister_parked_trains()
   storage.hoppers.active = {}
-  for _, surface in pairs(game.surfaces) do
-    for _, train in pairs(surface.get_trains()) do
-      if train.state == defines.train_state.wait_station then
-        registry.register_train_hoppers(train)
-      end
-    end
+  for _, train in pairs(game.train_manager.get_trains{ state = defines.train_state.wait_station }) do
+    registry.register_train_hoppers(train)
   end
 end
 
