@@ -2,11 +2,56 @@
 
 **Target game:** Factorio 2.0 (Space Age optional, see "Compatibility")
 **Author:** wizzowsky
-**Status:** Draft v1
+**Status:** v0.2 implemented (functional MVP). This document mixes the original
+design intent with the shipped behavior. Sections describing features not yet
+built are explicitly marked **Planned**; everything else reflects the current
+code unless noted.
+
+## 0. Implementation status (v0.2)
+
+A quick source-of-truth for what actually exists today versus what remains
+aspirational. The detailed sections below have been updated to match, but this
+list is the fastest orientation.
+
+**Implemented and working:**
+
+- Two buildings — Loading Hopper and Unloading Hopper — as `ContainerPrototype`
+  variants, 4x6, straddling a straight rail.
+- Bidirectional transfer between hopper and parked cargo wagon, driven by
+  **continuous per-tick servicing** (`on_nth_tick(15)`) plus an immediate
+  transfer on train arrival. This replaced the original single-atomic-transfer
+  design.
+- **Single-wagon rule:** a hopper transfers only when it overlaps exactly one
+  cargo wagon. If it spans two (e.g. sits on a wagon gap), it deterministically
+  goes inactive.
+- **Placement validation:** a hopper whose outer side strips overlap a rail is
+  rejected on build, with the item refunded (mined back for players, spilled for
+  bots) and a localized flying-text warning.
+- Fixed inventory size of **40 slots**, chosen to match a normal cargo wagon
+  (see §2.1). Not a setting.
+- Rotation via an assembling-machine **placer proxy**: the player places a
+  rotatable placer that is immediately swapped for the correct H or V hidden
+  container variant. Placed hoppers do not re-rotate; fast-replace covers edits.
+- Wagon-friendly selection: hoppers draw beneath rolling stock
+  (`render_layer = "lower-object"`) and use a low `selection_priority` (25) so a
+  parked wagon over the center stays selectable while the wider side strips still
+  select the hopper.
+- Inserter access and circuit connections inherited from the container base.
+- Save/load and re-scan migration; storage keyed by `unit_number`.
+
+**Planned / not yet built:**
+
+- Pit-and-elevator and chute graphics (§2.3). Current art is a placeholder:
+  tinted steel-chest borders (blue = loader, amber = unloader).
+- Transfer-pulse animation (§3.3).
+- Mod settings (§4.4) — capacity, manual-mode, pulse duration. None exist; the
+  recipes are currently unlocked from the start with no technology gate.
+- Technology unlock (`technology.lua`) and `settings.lua`.
+- Custom circuit signals such as "wagon present" (§3.5).
 
 ## 1. Concept
 
-Train Hoppers adds two new buildings designed for fast loading and unloading of cargo wagons. Both buildings straddle a straight ground-level rail segment and align with the wagon slots projected by a nearby train stop. When a train arrives at the station, items move between hopper and wagon in a single transfer, with no inserter swing time in between.
+Train Hoppers adds two new buildings designed for fast loading and unloading of cargo wagons. Both buildings straddle a straight ground-level rail segment. When a train arrives and a single cargo wagon sits over a hopper, items move rapidly between hopper and wagon with no inserter swing time in between.
 
 The buildings function as large storage containers. They expose inventory access to inserters from the sides and support circuit network connections.
 
@@ -23,22 +68,36 @@ Both buildings are 4 tiles wide by 6 tiles long, straddling a straight rail segm
 ### 2.1 Loading Hopper
 
 - **Footprint:** 4x6 (center 2x6 over rail, 1x6 access strip on each long side).
-- **Inventory:** Large container, target ~80 to 120 slots (numbers to tune; roughly 2x a steel chest).
+- **Inventory:** 40 slots, matching a normal (quality) cargo wagon's capacity so
+  a full hopper can fill an empty wagon and vice versa. A base-40 container
+  slightly overshoots the wagon at mid quality tiers (the wagon's per-quality
+  capacities are hard-coded, not the +30%/tier steel-chest curve); this overshoot
+  is accepted rather than corrected at runtime.
 - **Input direction:** Inserters insert items from either side strip into the hopper.
 - **Output direction:** Items leave the hopper by being transferred into a parked cargo wagon (no belt or inserter output to the world).
-- **Behavior at a stop:** When a train is parked at an adjacent stop and a cargo wagon's bounding box overlaps the loader's footprint, transfer as many items as possible from the hopper into that wagon. Stop transferring when either the wagon is full or the hopper is empty.
+- **Behavior at a stop:** While a train is parked and exactly one cargo wagon
+  overlaps the loader's footprint, continuously transfer items from the hopper
+  into that wagon each service tick. Stop when the wagon is full or the hopper is
+  empty. If the loader overlaps more than one wagon it stays inactive (§3.2).
 
 ### 2.2 Unloading Hopper (with visual "pit and elevators")
 
 - **Footprint:** 4x6 (same as loader, so layouts are symmetric).
-- **Inventory:** Same large container, same target capacity.
+- **Inventory:** 40 slots, same as the loader (see §2.1).
 - **Input direction:** Items come from a parked cargo wagon overhead-conceptually-dropping into the hopper.
 - **Output direction:** Inserters remove items from either side strip.
-- **Behavior at a stop:** When a wagon's bounding box overlaps the unloader's footprint, transfer as many items as possible from the wagon's inventory into the hopper. Stop when wagon is empty or hopper is full.
+- **Behavior at a stop:** While exactly one wagon overlaps the unloader's
+  footprint, continuously transfer items from the wagon into the hopper each
+  service tick. Stop when the wagon is empty or the hopper is full. If the
+  unloader overlaps more than one wagon it stays inactive (§3.2).
 
 ### 2.3 Visual design
 
-The unloader uses an "underground pit" conceit to sell the fast-unload fiction without needing actual elevated rails:
+**Planned.** The graphics below are the design target; the current build ships a
+placeholder (tinted steel-chest borders on the side strips — blue for the loader,
+amber for the unloader — drawn beneath rolling stock). The unloader will use an
+"underground pit" conceit to sell the fast-unload fiction without needing actual
+elevated rails:
 
 - **Surface layer:** the rail runs along the ground at standard elevation, same as anywhere else.
 - **Below the rail (between sleepers, where players normally see grass/concrete):** a dark recessed pit graphic. This is purely a sprite illusion; the tile itself is unchanged.
@@ -58,41 +117,79 @@ Both buildings rotate to align with horizontal or vertical rail.
 | Logistic network | Optional setting; off by default | Optional setting; off by default |
 | Filter slots | Yes (standard container filter) | Yes (standard container filter) |
 | Recipe cost | Roughly: steel chest x2, iron gear x40, electronic circuit x20, steel plate x40 (tune later) |
-| Tech unlock | Behind "Logistic train network" or a new "Train hoppers" tech that requires Railway + Logistics 2 |
+| Tech unlock | **Planned.** Currently the recipes are `enabled = true` (available from the start, no gate). Intended target: a "Train hoppers" tech requiring Railway + Logistics 2. |
 
 ## 3. Mechanics
 
 ### 3.1 Detection
 
-The transfer trigger is "a parked cargo wagon overlaps a hopper's wagon-detection area."
+The transfer trigger is "a parked cargo wagon overlaps a hopper's footprint."
 
-- The wagon-detection area is the inner 2x6 rail strip of each hopper's footprint, expanded slightly to handle wagon positional jitter.
-- Detection happens on `on_train_changed_state` when the new state is `defines.train_state.wait_station` (and similar arrived-at-stop states).
-- For each cargo wagon in `train.carriages`, the mod checks `surface.find_entities_filtered{type = "train-hopper-loader" | "train-hopper-unloader", area = wagon_bbox_expanded}`. A direct lookup keyed by tile position via a `storage` index can replace this if perf is a concern.
+- Overlap is tested with `surface.find_entities_filtered{ name = <hopper variant
+  names>, area = wagon.bounding_box }` (and the reverse, cargo wagons within a
+  hopper's bounding box). The generous bounding-box test means a correctly
+  aligned hopper counts exactly one wagon; a hopper straddling a wagon gap counts
+  two and is disabled by the single-wagon rule (§3.2).
+- Registration happens on `on_train_changed_state` when the new state is
+  `defines.train_state.wait_station`, and is torn down when the train leaves.
+- Because `on_train_changed_state` only fires on transitions, two extra paths
+  cover trains that are *already* parked: a one-shot re-scan on `on_load`
+  (save/load), and a scan when a hopper is **placed** next to a parked train
+  (`register_parked_wagons_for_hopper`).
+- Active (train-present) hoppers are tracked in `storage.hoppers.active` keyed by
+  `unit_number`; the canonical registry of all hoppers is `storage.hoppers.by_unit`.
 
 ### 3.2 Transfer
 
-A single transfer happens per (wagon, hopper) pair per stop. It is one logical operation, not per-tick streaming.
+Transfer is **continuous while a train is parked**, not a single atomic
+operation. A service tick (`on_nth_tick(15)`) walks the active hoppers and moves
+items; an immediate transfer also runs the instant a train arrives so there is no
+visible delay before the first tick.
 
-- **Loader:** `wagon_inv.insert(stack)` for every stack in the hopper, in slot order. Continue until the wagon refuses or the hopper is empty. Respect the wagon's bar (red line) and filter slots.
-- **Unloader:** `hopper_inv.insert(stack)` from the wagon. Same loop.
-- Items are moved respecting `LuaItemStack` durability, ammo magazine count, and other metadata. Use `LuaInventory.find_item_stack` and full stack `set_stack` rather than item-name+count where possible, to preserve quality and data.
-- **Quality (Space Age):** transfers preserve quality. The item-stack copy approach handles this automatically.
+- **Single-wagon rule:** each service call resolves the hopper's *sole* valid
+  overlapping wagon. Zero or more than one → the hopper does nothing that tick
+  (deterministic "ambiguous = off" behavior, pairing with a future inactive-state
+  graphic). The registry still tracks every overlapping wagon; the policy lives in
+  the transfer layer.
+- **Loader:** `wagon_inv.insert(stack)` for every readable stack in the hopper, in
+  slot order, decrementing the source stack by the inserted count. Stops when the
+  wagon is full. Respects the wagon's bar and filter slots.
+- **Unloader:** `hopper_inv.insert(stack)` from the wagon, same loop; stops when
+  the hopper is full (backpressure).
+- Items are moved by inserting the `LuaItemStack` directly rather than by
+  item-name+count, so quality, durability, ammo, and other metadata are preserved.
+- **Quality (Space Age):** transfers preserve quality automatically via the
+  stack-copy approach.
 
 ### 3.3 Visual transfer pulse
 
-When a transfer happens, fire a one-shot animation on the hopper (chutes flashing, elevators speeding up, particle puff). The animation should always last a fixed visible duration (e.g., 30 to 60 ticks) regardless of how many items actually moved, so that small transfers still feel satisfying. The actual inventory change is instantaneous on the first tick of the animation.
+**Planned.** Not yet implemented. When built, a transfer will fire a one-shot
+animation on the hopper (chutes flashing, elevators speeding up, particle puff)
+lasting a fixed visible duration regardless of how many items moved.
 
 ### 3.4 Edge cases the mod must handle
 
 1. **Train arrives but no cargo wagon overlaps the hopper.** Do nothing. Common when a hopper is placed near a stop but not on a wagon slot.
 2. **Multiple hoppers in a row.** Each hopper handles its own overlapping wagon independently.
-3. **Train in manual mode at the stop.** Optional setting. Default: transfer happens. Player setting to disable for manual-only behavior.
-4. **Train leaves mid-transfer.** Transfers are atomic in v1, so this should not happen. If we ever switch to streaming transfer, the transfer cancels gracefully.
-5. **Hopper destroyed while train is at the stop.** Re-detection on the next state change avoids stale references; storage is cleaned on `on_entity_died` / mined events.
-6. **Rail under hopper is mined.** The hopper itself is unaffected (it is a separate entity). The player may now have a hopper sitting over no rail; it stays placeable but cannot service trains until rail is rebuilt.
-7. **Two-headed trains and reversed wagons.** Detection is based on wagon entity overlap, so direction does not matter.
-8. **Filter inserters and red bar limits on the wagon.** Honor them. The Lua `insert` call already does.
+3. **Hopper overlaps more than one wagon.** The hopper straddles a wagon gap. It
+   deterministically goes inactive (single-wagon rule, §3.2) rather than guessing
+   which wagon to service. Placement validation (§4.2) already prevents most
+   misalignment; this is the runtime backstop.
+4. **Train in manual mode at the stop.** Currently transfers happen whenever the
+   train state is `wait_station`. A manual-mode opt-out is a **planned** setting.
+5. **Train leaves mid-transfer.** Transfer is continuous per-tick, so a partial
+   transfer simply stops on the tick the train leaves; the hopper is unregistered
+   on the state change. No cleanup needed for in-flight state.
+6. **Hopper destroyed while train is at the stop.** Storage is cleaned on
+   `on_entity_died` / mined / script-destroy events, and the service tick drops any
+   entry whose entity has become invalid.
+7. **Rail under hopper is mined.** The hopper itself is unaffected (separate
+   entity). It stays placed but cannot service trains until rail is rebuilt.
+8. **Two-headed trains and reversed wagons.** Detection is based on wagon entity overlap, so direction does not matter.
+9. **Filter inserters and red bar limits on the wagon.** Honored automatically by the Lua `insert` call.
+10. **Wagon selection blocked by the hopper.** Hoppers draw beneath rolling stock
+    and use a lower `selection_priority`, so a parked wagon over the center stays
+    selectable; the wider side strips still select the hopper.
 
 ### 3.5 Circuit network
 
@@ -102,58 +199,95 @@ Each hopper exposes a single combinator-like output of its current inventory con
 
 ### 4.1 Prototype definitions (data stage)
 
-Both buildings are defined as `ContainerPrototype` instances. Container is chosen over `LogisticContainerPrototype` because logistic integration is optional and we want it off by default.
+Both buildings are defined as `ContainerPrototype` instances (cloned from
+`steel-chest`). Container is chosen over `LogisticContainerPrototype` because
+logistic integration is optional and we want it off by default. Each building is
+actually **three** prototypes: a hidden horizontal container variant, a hidden
+vertical variant, and a rotatable assembling-machine **placer** the player picks
+up (assembling-machine gives R-key rotation of the ghost). On build, the placer
+is swapped for the correct H/V variant based on its direction (§4.3).
 
 Key prototype fields:
 
-- `collision_box`: 4x6 footprint matching the visible building, but `collision_mask` configured so the entity does not collide with `rail-layer`. The exact mask is the standard container mask minus the rail layer. Reference: `data.raw["straight-rail"]["straight-rail"]` for the rail's own layer set.
-- `selection_box`: matches the 4x6 visible area.
-- `flags`: include `"player-creation"`, `"placeable-neutral"`. Avoid `"not-on-map"`.
-- `inventory_size`: 80 to 120, tune later.
-- `circuit_wire_max_distance`: standard (9 or so).
-- `picture`: rotated sprite sheet, four orientations (or two if rail orientation is restricted to horizontal/vertical only).
+- `collision_box`: 4x6 footprint, with `collision_mask = { player, is_object }`
+  (notably **excluding** the rail layer) so the entity can be placed over rails.
+- `selection_box`: matches the collision box.
+- `selection_priority`: 25 (below the default 50) so a parked wagon wins hover
+  selection over the center; the side strips still select the hopper.
+- `flags`: `"player-creation"`, `"placeable-neutral"`, `"not-in-kill-statistics"`;
+  the H/V variants are `hidden` so only the placer is user-facing.
+- `inventory_size`: 40 (matches the cargo wagon; see §2.1).
+- `fast_replaceable_group`: `"train-hopper"` (shared, so loader/unloader
+  fast-replace each other).
+- `picture`: composited from tinted steel-chest sprites on the side strips, drawn
+  on `render_layer = "lower-object"` so hoppers sit visually beneath trains.
 
 ### 4.2 Placement validation
 
-After `on_built_entity`, `on_robot_built_entity`, and `script_raised_built`:
+On `on_built_entity`, `on_robot_built_entity`, `script_raised_built`, and
+`script_raised_revive`, before the placer is swapped for a real variant:
 
-1. Look for a `straight-rail` entity centered in the hopper's inner 2x6 area.
-2. Verify the rail's direction matches the hopper's rotation.
-3. If invalid: destroy the hopper, return the item to the player (or robot), print a localized error message.
+1. Compute the two 1-tile **outer side strips** of the target footprint (inset
+   slightly on the inner edge so a correctly-centered rail does not clip them).
+2. Reject placement if either strip overlaps a rail
+   (`straight-rail`/`half-diagonal-rail`/`curved-rail-a`/`curved-rail-b`) — this
+   catches off-center placement and hoppers spanning between two parallel tracks.
+3. On rejection: return the item to its source (players mine it back, bots/scripts
+   get the item spilled) and show a localized flying-text warning.
 
-This avoids the "hopper floating over nothing" problem and gives the player clear feedback.
+This enforces "straddle a single track cleanly" and gives immediate feedback,
+rather than the original "find a centered straight-rail + match direction" check.
 
 ### 4.3 Runtime (control.lua) structure
 
 ```
-storage = {
-  hoppers = {            -- keyed by unit_number
+storage.hoppers = {
+  by_unit = {              -- canonical registry of every hopper, keyed by unit_number
     [unit_number] = {
       entity = LuaEntity,
-      kind = "loader" | "unloader",
-      rail = LuaEntity,     -- the rail it straddles
-      detection_area = BoundingBox,
+      kind   = "loader" | "unloader",
     }
   },
-  trains_being_serviced = {}, -- optional, for animation tracking
+  active = {               -- only hoppers with a parked train; keyed by unit_number
+    [unit_number] = {
+      wagons = { LuaEntity, ... },  -- all overlapping wagons (policy picks the sole one)
+    }
+  },
 }
 ```
 
+The registry (`by_unit`) is kind-tagged so runtime branching never parses entity
+names. The `active` map holds only the wagon list; the entity and kind are always
+looked up from `by_unit`. (The original design stored `rail` and
+`detection_area` per hopper; neither is persisted — overlap is recomputed from
+bounding boxes as needed.)
+
 **Event handlers:**
 
-- `script.on_init`, `script.on_configuration_changed`: initialize and migrate `storage`.
-- Build events (`on_built_entity`, `on_robot_built_entity`, `script_raised_built`): register hopper, validate placement.
-- Destroy events (`on_player_mined_entity`, `on_robot_mined_entity`, `on_entity_died`, `script_raised_destroy`): unregister hopper.
-- `on_train_changed_state`: if new state is `wait_station`, iterate `event.train.carriages`, find overlapping hoppers, perform transfers.
-- `on_nth_tick(N)`: only used to drive the visual animation state machine. Not used for transfer logic.
+- `on_init` / `on_configuration_changed` / `on_load`: initialize and migrate
+  `storage`, and re-scan surfaces so already-parked trains are picked up.
+- Build events (`on_built_entity`, `on_robot_built_entity`, `script_raised_built`,
+  `script_raised_revive`): validate placement, swap placer for the H/V variant,
+  register it, and pick up any already-parked wagon it overlaps.
+- Destroy events (`on_player_mined_entity`, `on_robot_mined_entity`,
+  `on_entity_died`, `script_raised_destroy`): unregister the hopper.
+- `on_player_rotated_entity`: swap a placed hopper between H and V variants,
+  carrying its inventory across.
+- `on_train_changed_state`: on `wait_station`, register overlapping hoppers and
+  run an immediate transfer; on leaving, unregister.
+- `on_nth_tick(15)`: continuous transfer for every active hopper (this drives the
+  actual item movement, not just animation).
 
 ### 4.4 Settings
 
-Per-mod settings (startup + runtime as appropriate):
+**Planned — none currently exist.** No `settings.lua` ships in v0.2; inventory
+capacity is fixed at 40 and transfers always run at `wait_station`. The intended
+settings when added:
 
-- `train-hopper-capacity` (startup int, default 100): inventory slot count.
+- `train-hopper-capacity` (startup int): inventory slot count (currently fixed at 40).
 - `train-hopper-transfer-on-manual` (runtime bool, default true).
-- `train-hopper-visual-pulse-duration` (runtime int, default 45 ticks).
+- `train-hopper-visual-pulse-duration` (runtime int, default 45 ticks) — pairs
+  with the planned transfer-pulse animation (§3.3).
 
 ### 4.5 Save/load and migration
 
@@ -163,40 +297,39 @@ Per-mod settings (startup + runtime as appropriate):
 
 ### 4.6 File structure
 
+Current layout (planned-but-unbuilt files marked):
+
 ```
 train-hoppers/
   info.json
-  thumbnail.png
-  changelog.txt
   data.lua                  -- requires prototypes/*
   control.lua               -- requires scripts/*
-  settings.lua
+  README.md
+  spec.md
   prototypes/
     entity-loader.lua
     entity-unloader.lua
     item.lua
     recipe.lua
-    technology.lua
+    graphics.lua            -- shared sprite compositing + tints
+    technology.lua          -- PLANNED (not present)
   scripts/
-    placement.lua
-    transfer.lua
-    animation.lua
-    migration.lua
-  graphics/
-    entity/
-      loader/
-      unloader/
-    icons/
+    hopper-registry.lua     -- shared bookkeeping: name lists, overlap, register/unregister
+    placement.lua           -- placer swap, rotation, placement validation, lifecycle
+    transfer.lua            -- item movement + single-wagon rule
+    migration.lua           -- storage init + save/load re-scan
+    animation.lua           -- PLANNED (not present)
+  settings.lua              -- PLANNED (not present)
   locale/
     en/
       train-hoppers.cfg
-  migrations/
-    (empty in v1)
+  graphics/                 -- PLANNED: real art (pit/elevator/chute); placeholder is code-composited
+  migrations/               -- (empty)
 ```
 
 ## 5. Compatibility
 
-- **Base game 2.0:** required.
+- **Base game 2.1:** required (`base >= 2.1`, per `info.json`).
 - **Space Age:** not required, but quality is supported automatically by using stack-based transfer. Elevated rails are explicitly out of scope.
 - **Other mods:** any mod that adds new cargo wagons should work, since detection is based on `type = "cargo-wagon"`.
 
@@ -213,22 +346,47 @@ These are intentionally excluded to keep the scope tight:
 
 ## 7. Milestones
 
-1. **M1: Prototype boilerplate.** Two entities placeable in the world via creative mode, no logic. Verifies collision_mask trick works. Estimate: 1 evening.
-2. **M2: Placement validation.** Cancel placement when not on a valid straight rail. Estimate: 1 evening.
-3. **M3: Transfer logic.** `on_train_changed_state` handler that moves items in both directions. Verified working end-to-end with a vanilla train at a vanilla stop. Estimate: 1 weekend.
-4. **M4: Inserter and circuit integration.** Should already work from the container prototype; verify and tune. Estimate: half an evening.
-5. **M5: Graphics pass.** First version of sprites including the pit/elevator illusion. Estimate: longest single task, multiple weekends depending on art skill.
-6. **M6: Settings, localization, recipes, technology.** Estimate: 1 evening.
-7. **M7: Polish, edge cases, packaging.** Estimate: 1 weekend.
-8. **Release v1.0 to the mod portal.**
+Progress markers reflect the v0.2 build.
 
-## 8. Open questions to revisit before coding
+1. **M1: Prototype boilerplate.** ✅ Done. Container variants + placer proxy
+   placeable in the world; collision_mask rail-transparency verified.
+2. **M2: Placement validation.** ✅ Done — implemented as an outer-strip rail
+   overlap check with refund + flying text (§4.2).
+3. **M3: Transfer logic.** ✅ Done, and extended beyond the original scope:
+   continuous per-tick transfer in both directions plus the single-wagon rule,
+   verified end-to-end with a vanilla train at a vanilla stop.
+4. **M4: Inserter and circuit integration.** ✅ Inherited from the container base;
+   working. Fine-tuning ongoing.
+5. **M5: Graphics pass.** ⏳ Planned. Placeholder tinted borders in place; real
+   pit/elevator/chute sprites outstanding. Longest single task.
+6. **M6: Settings, localization, recipes, technology.** ◑ Partial — recipes and
+   localization exist; settings and technology are not yet built (§4.4, §2.4).
+7. **M7: Polish, edge cases, packaging.** ⏳ Ongoing (edge cases handled: parked-
+   train registration, save/load, wagon selection). Packaging pending.
+8. **Release v1.0 to the mod portal.** ⏳ Pending (currently v0.2, internal).
 
-1. **Should both hoppers share a single entity prototype with a "kind" property, or be two separate prototypes?** Two separate prototypes is simpler, more idiomatic, and makes graphics and recipes cleaner. Going with two unless a reason emerges.
-2. **Inventory size: 80, 100, or 120 slots?** Defer until playtest. Default 100 is reasonable.
-3. **Should the unloader and loader have different recipes/tech tiers?** Possibly. Loader is more obviously useful early; unloader benefits more from late-game throughput needs. Could tier them.
-4. **Visual: how literal should the elevator be?** A heavy "obvious mechanism" look reads better than a subtle one. Lean toward chunky, readable industrial design.
-5. **Should hoppers occupy the train signal's path collision?** No: they must be transparent to train movement. The collision_mask configuration handles this.
+## 8. Open questions (status)
+
+Several of these are now resolved by the v0.2 build; kept here for the rationale.
+
+1. **Shared prototype with a "kind" property, or two separate prototypes?**
+   **Resolved — separate.** Each building is its own set of container variants +
+   placer. The *storage* layer is unified (`by_unit` with a `kind` tag), but the
+   prototypes, recipes, and graphics are distinct.
+2. **Inventory size: 80, 100, or 120 slots?** **Resolved — 40**, to match a normal
+   cargo wagon rather than overshoot it (see §2.1). Revisit if playtesting wants a
+   buffer larger than one wagon.
+3. **Different recipes/tech tiers for loader vs unloader?** **Deferred.** Both are
+   currently ungated with parallel recipes. Tiering remains possible once a tech
+   gate exists.
+4. **Visual: how literal should the elevator be?** Still open; graphics are
+   placeholder. Lean toward chunky, readable industrial design when built.
+5. **Should hoppers occupy the train signal's path collision?** **Resolved — no.**
+   The `collision_mask` excludes the rail layer, so hoppers are transparent to
+   train movement.
+6. **Should misaligned hoppers be prevented or just inactive?** **Resolved — both.**
+   Placement validation (§4.2) prevents building across rails; the single-wagon
+   rule (§3.2) is the runtime backstop for anything that slips through.
 
 ## 9. Reference mods to study
 
