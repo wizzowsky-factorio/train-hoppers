@@ -1,7 +1,7 @@
 local M = {}
 
 M.LOADER_NAMES = { "train-hopper-loader-h",   "train-hopper-loader-v" }
-M.UNLOADER_NAMES = {} -- "train-hopper-unloader-h", "train-hopper-unloader-v" }
+M.UNLOADER_NAMES = { "train-hopper-unloader-h", "train-hopper-unloader-v" }
 M.ALL_HOPPER_NAMES = {}
 for _, name in ipairs(M.LOADER_NAMES) do table.insert(M.ALL_HOPPER_NAMES, name) end
 for _, name in ipairs(M.UNLOADER_NAMES) do table.insert(M.ALL_HOPPER_NAMES, name) end
@@ -11,6 +11,27 @@ function M.find_hoppers_overlapping_wagon(wagon)
     name = M.ALL_HOPPER_NAMES,
     area = wagon.bounding_box,
   }
+end
+
+-- When a hopper is placed next to an already-parked train, on_train_changed_state
+-- won't fire for that train. Scan for overlapping cargo wagons whose train is
+-- stopped and register them so the tick loop starts transferring.
+function M.register_parked_wagons_for_hopper(hopper)
+  local wagons = hopper.surface.find_entities_filtered{
+    type = "cargo-wagon",
+    area = hopper.bounding_box,
+  }
+  for _, wagon in ipairs(wagons) do
+    local train = wagon.train
+    if train and train.state == defines.train_state.wait_station then
+      local record = storage.hoppers.active[hopper.unit_number]
+      if not record then
+        record = { wagons = {} }
+        storage.hoppers.active[hopper.unit_number] = record
+      end
+      table.insert(record.wagons, wagon)
+    end
+  end
 end
 
 -- Called when a train arrives at wait_station. Register every (hopper, wagon)

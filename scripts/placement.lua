@@ -1,11 +1,25 @@
+local registry = require("scripts.hopper-registry")
+
+local HOPPER_CONFIG = {
+  ["train-hopper-loader"]   = { kind = "loader",   h = "train-hopper-loader-h",   v = "train-hopper-loader-v" },
+  ["train-hopper-unloader"] = { kind = "unloader", h = "train-hopper-unloader-h", v = "train-hopper-unloader-v" },
+}
+
+-- Reverse lookup: a variant name -> its config, so rotation can find the sibling + kind.
+local VARIANT_CONFIG = {}
+for _, cfg in pairs(HOPPER_CONFIG) do
+  VARIANT_CONFIG[cfg.h] = cfg
+  VARIANT_CONFIG[cfg.v] = cfg
+end
+
 -- Map from the placer's direction to which real variant to spawn.
 -- defines.direction.north (0) and south (4) → horizontal.
 -- defines.direction.east (2) and west (6)   → vertical.
-local function variant_for_direction(direction)
+local function variant_for_direction(direction, cfg)
   if direction == defines.direction.east or direction == defines.direction.west then
-    return "train-hopper-loader-v"
+    return cfg.v
   else
-    return "train-hopper-loader-h"
+    return cfg.h
   end
 end
 
@@ -34,14 +48,15 @@ for _, event_id in ipairs(build_events) do
   script.on_event(event_id, function(event)
     local placer = event.entity
     if not (placer and placer.valid) then return end
-    if placer.name ~= "train-hopper-loader" then return end
+    local cfg = HOPPER_CONFIG[placer.name]
+    if not cfg then return end
 
     local surface   = placer.surface
     local position  = placer.position
     local force     = placer.force
     local direction = placer.direction
 
-    local target_name = variant_for_direction(direction)
+    local target_name = variant_for_direction(direction, cfg)
     placer.destroy()
 
     local new_entity = surface.create_entity{
@@ -50,7 +65,8 @@ for _, event_id in ipairs(build_events) do
       force    = force,
     }
     if new_entity then
-      storage.hoppers.by_unit[new_entity.unit_number] = { entity = new_entity, kind = "loader" }
+      storage.hoppers.by_unit[new_entity.unit_number] = { entity = new_entity, kind = cfg.kind }
+      registry.register_parked_wagons_for_hopper(new_entity)
     end
   end)
 end
@@ -60,11 +76,10 @@ script.on_event(defines.events.on_player_rotated_entity, function(event)
   local rotated_entity = event.entity
   if not (rotated_entity and rotated_entity.valid) then return end
 
-  local swap_to
-  if rotated_entity.name == "train-hopper-loader-h" then swap_to = "train-hopper-loader-v"
-  elseif rotated_entity.name == "train-hopper-loader-v" then swap_to = "train-hopper-loader-h"
-  else return end
+  local cfg = VARIANT_CONFIG[rotated_entity.name]
+  if not cfg then return end
 
+  local swap_to = (rotated_entity.name == cfg.h) and cfg.v or cfg.h -- lua ternaries suck
   local surface, position, force = rotated_entity.surface, rotated_entity.position, rotated_entity.force
   local new_entity = surface.create_entity{
     name     = swap_to,
@@ -72,11 +87,10 @@ script.on_event(defines.events.on_player_rotated_entity, function(event)
     force    = force,
   }
   if new_entity then
-    local kind = storage.hoppers.by_unit[rotated_entity.unit_number].kind
     transfer_inventory(rotated_entity, new_entity)
     storage.hoppers.by_unit[rotated_entity.unit_number] = nil
     storage.hoppers.active[rotated_entity.unit_number] = nil
-    storage.hoppers.by_unit[new_entity.unit_number] = { entity = new_entity, kind = kind }
+    storage.hoppers.by_unit[new_entity.unit_number] = { entity = new_entity, kind = cfg.kind }
     rotated_entity.destroy()
   end
 end)

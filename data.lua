@@ -4,7 +4,7 @@
 data:extend({{ type = "recipe-category", name = "train-hopper-transfer" }})
 
 require("prototypes.entity-loader")
--- require("prototypes.entity-unloader")
+require("prototypes.entity-unloader")
 require("prototypes.item")
 require("prototypes.recipe")
 -- require("prototypes.technology")

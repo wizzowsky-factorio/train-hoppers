@@ -1,4 +1,4 @@
--- Move items from a hopper's inventory into a cargo wagon's inventory.
+-- Move items between a hopper and a cargo wagon in either direction.
 -- Preserves quality, ammo, durability, etc., because we insert LuaItemStacks
 -- directly rather than passing item-name-and-count pairs.
 local registry = require("scripts.hopper-registry")
@@ -7,7 +7,7 @@ local function transfer_hopper_to_wagon(hopper, wagon)
   local hopper_inv = hopper.get_inventory(defines.inventory.chest)
   local wagon_inv  = wagon.get_inventory(defines.inventory.cargo_wagon)
   if not (hopper_inv and wagon_inv) then return end
-  if wagon_inv.is_full() then return end
+  if wagon_inv.is_full() then return end -- Stop when wagon is full
 
   for slot_index = 1, #hopper_inv do
     local hopper_stack = hopper_inv[slot_index]
@@ -23,6 +23,26 @@ local function transfer_hopper_to_wagon(hopper, wagon)
   end
 end
 
+local function transfer_wagon_to_hopper(hopper, wagon)
+  local hopper_inv = hopper.get_inventory(defines.inventory.chest)
+  local wagon_inv  = wagon.get_inventory(defines.inventory.cargo_wagon)
+  if not (hopper_inv and wagon_inv) then return end
+  if hopper_inv.is_full() then return end -- Stop when hopper is full
+
+  for slot_index = 1, #wagon_inv do
+    local wagon_stack = wagon_inv[slot_index]
+    if wagon_stack.valid_for_read then
+      local inserted_count = hopper_inv.insert(wagon_stack)
+      if inserted_count > 0 then
+        wagon_stack.count = wagon_stack.count - inserted_count
+      end
+      -- If the hopper rejected any of this stack, it's full for this item.
+      -- Move on to the next slot — a different item might still fit if the
+      -- hopper has filter slots or is not entirely full.
+    end
+  end
+end
+
 -- Immediate transfer on arrival (before the first tick handler fires).
 script.on_event(defines.events.on_train_changed_state, function(event)
   local train = event.train
@@ -34,7 +54,7 @@ script.on_event(defines.events.on_train_changed_state, function(event)
         if reg and reg.kind == "loader" then
           transfer_hopper_to_wagon(hopper, wagon)
         elseif reg and reg.kind == "unloader" then
-          -- transfer_wagon_to_hopper(hopper, wagon)
+          transfer_wagon_to_hopper(hopper, wagon)
         end
       end
     end
@@ -53,7 +73,7 @@ script.on_nth_tick(15, function()
         if reg.kind == "loader" then
           transfer_hopper_to_wagon(reg.entity, wagon)
         elseif reg.kind == "unloader" then
-          -- transfer_wagon_to_hopper(reg.entity, wagon)
+          transfer_wagon_to_hopper(reg.entity, wagon)
         end
       end
     else
