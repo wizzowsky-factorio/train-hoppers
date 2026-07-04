@@ -43,18 +43,45 @@ local function transfer_wagon_to_hopper(hopper, wagon)
   end
 end
 
+-- The single wagon this hopper should service, or nil if it overlaps
+-- zero or more than one valid wagon (ambiguous -> disabled).
+local function sole_wagon(record)
+  local found = nil
+  for _, wagon in ipairs(record.wagons) do
+    if wagon.valid then
+      if found then return nil end   -- second valid wagon -> ambiguous -> off
+      found = wagon
+    end
+  end
+  return found
+end
+
+local function service_hopper(reg, record)
+  local wagon = sole_wagon(record)
+  if not wagon then return end       -- 0 or >1 wagons: do nothing
+  if reg.kind == "loader" then
+    transfer_hopper_to_wagon(reg.entity, wagon)
+  elseif reg.kind == "unloader" then
+    transfer_wagon_to_hopper(reg.entity, wagon)
+  end
+end
+
 -- Immediate transfer on arrival (before the first tick handler fires).
 script.on_event(defines.events.on_train_changed_state, function(event)
   local train = event.train
   if train.state == defines.train_state.wait_station then
     registry.register_train_hoppers(train)
+    local seen = {}
     for _, wagon in pairs(train.cargo_wagons) do
       for _, hopper in ipairs(registry.find_hoppers_overlapping_wagon(wagon)) do
-        local reg = storage.hoppers.by_unit[hopper.unit_number]
-        if reg and reg.kind == "loader" then
-          transfer_hopper_to_wagon(hopper, wagon)
-        elseif reg and reg.kind == "unloader" then
-          transfer_wagon_to_hopper(hopper, wagon)
+        local unit_number = hopper.unit_number
+        if not seen[unit_number] then
+          seen[unit_number] = true
+          local reg = storage.hoppers.by_unit[unit_number]
+          local record = storage.hoppers.active[unit_number]
+          if reg and reg.entity.valid and record then
+            service_hopper(reg, record)
+          end
         end
       end
     end
@@ -69,13 +96,7 @@ script.on_nth_tick(15, function()
   for unit_number, record in pairs(storage.hoppers.active) do
     local reg = storage.hoppers.by_unit[unit_number]
     if reg and reg.entity.valid then
-      for _, wagon in ipairs(record.wagons) do
-        if reg.kind == "loader" then
-          transfer_hopper_to_wagon(reg.entity, wagon)
-        elseif reg.kind == "unloader" then
-          transfer_wagon_to_hopper(reg.entity, wagon)
-        end
-      end
+      service_hopper(reg, record)
     else
       storage.hoppers.active[unit_number] = nil
     end
