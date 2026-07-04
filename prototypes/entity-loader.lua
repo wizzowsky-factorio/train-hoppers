@@ -11,7 +11,7 @@ local function make_hopper_container(name, collision_box)
   hopper_variant.name = name
   hopper_variant.minable = { mining_time = 0.5, result = "train-hopper-loader" }
   hopper_variant.max_health = 500
-  hopper_variant.inventory_size = 100
+  hopper_variant.inventory_size = 40
   hopper_variant.collision_box = collision_box
   hopper_variant.selection_box = collision_box
   hopper_variant.collision_mask = { layers = { player = true, is_object = true } }
